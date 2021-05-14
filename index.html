@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <title>WebHID BlinkStick demo</title>
+        <style>
+            html { font-family: sans-serif }
+            #log {
+                display: block;
+            }
+            #log p:last-of-type {
+                font-weight: bold;
+            }
+            #start-demo {
+                display: block;
+                margin: 1em;
+                font-size: 3em;
+            }
+        </style>
+
+    </head>
+    <body>
+        <output id="log">Hello! Press the &#x25B6;&#xFE0F; button to start.</output>
+        <button id="start-demo">&#x25B6;&#xFE0F;</button>
+        <script>
+document.querySelector('#start-demo').addEventListener('click', e => {
+    e.preventDefault();
+    e.target.remove();
+    document.querySelector('#log').innerHTML = '';
+
+    main();
+});
+
+/** Writes out some information on screen */
+function log(message) {
+    document.querySelector('#log').appendChild(
+        document.createElement('p')
+    ).textContent = message;
+}
+
+/** @returns {Promise<void>} */
+function promisleep(delay) {
+    return new Promise((resolve) => setTimeout(resolve, delay));
+}
+
+//////////////////////////////////////////////
+
+async function main() {
+    log(`First we have to find a suitable device.`);
+    const blinkStick = await findBlinkStick();
+    if (!blinkStick) {
+        return;
+    }
+
+    log(`There's no way to read the serial number using WebHID, so we don't know what model is that.`);
+    console.log(blinkStick); // For debug purposes
+
+    log(`Now we have to open the device (if it wasn't opened yet)`);
+    if (!blinkStick.opened) {
+        await blinkStick.open();
+    }
+
+    log(`Clearing all the pixels.`);
+    await clearAllLeds(blinkStick);
+
+    log(`Just closing the tab won't turn off the pixels. We have to handle it manually.`);
+    window.addEventListener('unload', () => {
+        clearAllLeds(blinkStick);
+        blinkStick.close();
+    });
+
+    log(`Setting the color of the first pixel. (The only pixel on some models)`);
+    await firstPixelDemo(blinkStick);
+
+    log(`New we're ready to control arbitrary pixels.`);
+    await arbitraryPixelDemo(blinkStick);
+
+    log(`Bulk color change.`);
+    await bulkDemo(blinkStick);
+
+    log(`Enjoy programming your BlinkStick!`);
+    await rainbow(blinkStick);
+}
+
+async function findBlinkStick() {
+    if (!navigator.hid) {
+        log(`Oops! The navigator.hid is not available. It may be not supported in your browser or this page is served from an insecure origin.`);
+        return null;
+    }
+
+    const vendorId = 0x20a0;
+    const productId = 0x41e5;
+    log(`Every BlinkStick (so far) have the same params: Vendor ID = ${vendorId}, Product ID = ${productId}.`);
+
+    log(`Getting all paired devices.`);
+    const devices = await navigator.hid.getDevices();
+
+    log(`Getting one that have matching vendor id and product id.`);
+    const pairedBlinkStick = devices.find(
+        (device) => device.vendorId === vendorId && device.productId === productId
+    );
+
+    if (pairedBlinkStick) {
+        log(`Found one! ${pairedBlinkStick.productName}`);
+        return pairedBlinkStick;
+    }
+
+    log(`Nothing found. Don't panic! Probably there is a BlinkStick but it's not paired yet. Browsers cannot just expose all the connected devices to all web pages. We need an explicit user permission.`);
+    log(`Asking for a matching device. This action requires a user activation (like click), that's why you were asked to press the button.`);
+
+    const matchingDevices = await navigator.hid.requestDevice({
+        filters: [{ vendorId, productId }],
+    });
+    const newBlinkStick = matchingDevices[0];
+
+    if (newBlinkStick) {
+        log(`Got one! ${newBlinkStick.productName}`);
+        return newBlinkStick;
+    }
+
+    log(`Uh-oh! No matching devices found (or have you rejected the request?)`);
+}
+
+/** @param {HIDDevice} An already opened BlinkStick device */
+async function clearAllLeds(blinkStick) {
+    await blinkStick.sendFeatureReport(6, new Uint8ClampedArray(25));
+}
+
+/** @param {HIDDevice} An already opened BlinkStick device */
+async function firstPixelDemo(blinkStick) {
+    log(`Lighting up full intensity. Send a feature report #1 with a 3 bytes UInt8Array all bytes 255.`);
+    await blinkStick.sendFeatureReport(1, Uint8Array.of(255, 255, 255));
+    await promisleep(1000);
+
+    log(`Pretty bright! Turning it off. Send a feature report #1 with a 3 bytes UInt8Array, all bytes 0.`);
+    await blinkStick.sendFeatureReport(1, Uint8Array.of(0, 0, 0));
+    await promisleep(1000);
+
+    log(`Red`);
+    await blinkStick.sendFeatureReport(1, Uint8Array.of(255, 0, 0));
+    await promisleep(1000);
+
+    log(`Green`);
+    await blinkStick.sendFeatureReport(1, Uint8Array.of(0, 255, 0));
+    await promisleep(1000);
+
+    log(`Blue`);
+    await blinkStick.sendFeatureReport(1, Uint8Array.of(0, 0, 255));
+    await promisleep(1000);
+
+    log(`Rainbow!`);
+    for (let hue = 0; hue <= 360; hue+= 1) {
+        const whenFrameShouldEnd = promisleep(10);
+        const rgbData = Uint8ClampedArray.of(
+            Math.cos((hue - 120) / 360 * 2 * Math.PI) * 255,
+            Math.cos((hue + 0) / 360 * 2 * Math.PI) * 255,
+            Math.cos((hue + 120) / 360 * 2 * Math.PI) * 255,
+        );
+        await blinkStick.sendFeatureReport(1, rgbData);
+        await whenFrameShouldEnd;
+    }
+}
+
+/** @param {HIDDevice} An already opened BlinkStick device */
+async function arbitraryPixelDemo(blinkStick) {
+    log(`Making the first pixel amber. Send a feature report #5. The data is 5 bytes: [channel, led index, R, G, B].`);
+    log(`Channels other than 0 are only available in BlinkStick Pro. We'll just use 0.`);
+    await blinkStick.sendFeatureReport(
+        5,
+        Uint8ClampedArray.of(
+            0, // Channel
+            0, // LED index
+            200, // Red
+            100, // Green
+            0, // Blue
+        ),
+    );
+    await promisleep(1000);
+    log(`Now making the second one blue.`);
+    await blinkStick.sendFeatureReport(
+        5,
+        Uint8ClampedArray.of(
+            0, // Channel
+            1, // LED index
+            0, // Red
+            0, // Green
+            255, // Blue
+        ),
+    );
+    await promisleep(800);
+    log(`You can control a single pixel not interferring with other ones. This way one BlinkStick can be shared between several applications at once.`);
+    for (let i = 0; i < 5; i++) {
+        await promisleep(200);
+        await blinkStick.sendFeatureReport(5, Uint8ClampedArray.of(0, 2, 255, 0, 0));
+        await promisleep(100);
+        await blinkStick.sendFeatureReport(5, Uint8ClampedArray.of(0, 2, 0, 0, 0));
+    }
+}
+
+/** @param {HIDDevice} An already opened BlinkStick device */
+async function bulkDemo(blinkStick) {
+    log(`Controlling individual pixels is not very suitable for complex animations. The colors of all pixels can be set at once!`);
+    log(`Feature reports requires an exact number of bytes in the data sent.`);
+
+    log(`Feature request #6 can set 8 pixels: [channel, G, R, B, G, R, B, ...]. Note that this time the color order is G-R-B, not R-G-B!`);
+    await blinkStick.sendFeatureReport(6, Uint8Array.of(
+        0, // Channel
+        0,  0, 0, // GRB for the first pixel
+        0, 10, 0, // GRB for the second pixel
+        0, 20, 0, // ...
+        0, 30, 0,
+        0, 40, 0,
+        0, 50, 0,
+        0, 60, 0,
+        0, 70, 0,
+    ));
+    await promisleep(1000);
+
+    log(`Feature request #7 can set 16 pixels. If your BlinkStick only have 8 pixels the rest are ignored.`);
+    await blinkStick.sendFeatureReport(7, Uint8Array.of(
+        0, // Channel
+        0, 0, 0, // GRB
+        10, 0, 0,
+        20, 0, 0,
+        30, 0, 0,
+        40, 0, 0,
+        50, 0, 0,
+        60, 0, 0,
+        70, 0, 0,
+        80, 0, 0,
+        90, 0, 0,
+        100, 0, 0,
+        110, 0, 0,
+        120, 0, 0,
+        130, 0, 0,
+        140, 0, 0,
+        150, 0, 0,
+    ));
+    await promisleep(1000);
+
+    log(`Feature request #8 can set 32 pixels.`);
+    const req8Data = new Uint8ClampedArray(1 + 32 * 3);
+    req8Data[0] = 0; // channel
+    for (let i = 0; i < 32; i++) {
+        req8Data[1 + i * 3 + 0] = i * 8;
+        req8Data[1 + i * 3 + 1] = i * 8;
+        req8Data[1 + i * 3 + 2] = 0;
+    }
+    await blinkStick.sendFeatureReport(8, req8Data);
+    await promisleep(1000);
+
+    log(`Finally, feature request #9 can set 64 pixels.`);
+    const req9Data = new Uint8ClampedArray(1 + 64 * 3);
+    req9Data[0] = 0; // channel
+    for (let i = 0; i < 64; i++) {
+        req9Data[1 + i * 3 + 0] = i;
+        req9Data[1 + i * 3 + 1] = i * 4;
+        req9Data[1 + i * 3 + 2] = i;
+    }
+    await blinkStick.sendFeatureReport(9, req9Data);
+    await promisleep(1000);
+}
+
+async function rainbow(blinkStick) {
+    let brightness = 16;
+
+    // Rainbow brightness control
+    {
+        const rangeElement = document.createElement('input');
+        rangeElement.type = 'range';
+        rangeElement.min = 0;
+        rangeElement.max = 147.7;
+        rangeElement.step = 0.1;
+        rangeElement.value = brightness;
+        rangeElement.addEventListener('input', () => {
+            brightness = Number(rangeElement.value);
+        });
+        document.body.appendChild(rangeElement);
+    }
+
+    // Use a WebWorker as a clock pulse generator
+    // This is a workaround for the background timer throttling
+    const workerSource = `setInterval(() => postMessage(null), 100)`;
+    const url = URL.createObjectURL(new Blob([workerSource], { type: 'application/javascript;charset=utf-8' }));
+    const worker = new Worker(url, { type: 'module', name: 'Clock' });
+
+    // Use a single buffer to be more GC friendly
+    const data = new Uint8ClampedArray(1 + 8 * 3);
+
+    worker.addEventListener('message', () => {
+        const hue = Date.now() / 4000;
+        for (let led = 0; led < 8; led++) {
+            const localHue = hue + led * 0.1;
+            const r = Math.cos(localHue);
+            const g = Math.cos(localHue + 2.1);
+            const b = Math.cos(localHue + 4.2);
+            const min = Math.min(r, g, b);
+
+            const ptr = led * 3 + 1;
+            data[ptr] = Math.round((g - min) * brightness);
+            data[ptr + 1] = Math.round((r - min) * brightness);
+            data[ptr + 2] = Math.round((b - min) * brightness);
+        }
+        blinkStick.sendFeatureReport(6, data);
+    });
+}
+
+        </script>
+    </body>
+</html>
