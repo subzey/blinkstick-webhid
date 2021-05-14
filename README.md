@@ -14,14 +14,30 @@ You have to grant a reading access for the device. Please see https://github.com
 
 ## Unofficial Feature Reports Table
 
-|   | sendFeatureReport               | receiveFeatureReport                 | report size (bytes)                                      |
-|---|---------------------------------|--------------------------------------|----------------------------------------------------------|
-| 1 | Set color of the 1st pixel      | Get color of the 1st pixel           | 3: `R`, `G`, `B`                                         |
-| 2 | ?                               | ?                                    | 32                                                       |
-| 3 | ?                               | ?                                    | 32                                                       |
-| 4 | Set mode for BlinkStick Pro     | Get mode for BlinkStick Pro          | 1                                                        |
-| 5 | Set color of 1 arbitrary pixel  | Get color of the 1st pixel           | 5: `channel`, `index`, `R`, `G`, `B`                     |
-| 6 | Set colors of 8 pixels at once  | Get colors of the first 8 pixels     | 1 + 8 * 3: `channel`, `G`, `R`, `B`, `G`, `R`, `B`, ...  |
-| 7 | Set colors of 16 pixels at once | Get colors of the first 16 pixels    | 1 + 16 * 3: `channel`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
-| 8 | Set colors of 32 pixels at once | Get colors of the first 32 pixels    | 1 + 32 * 3: `channel`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
-| 9 | Set colors of 64 pixels at once | Get colors of the first 64 pixels    | 1 + 64 * 3: `channel`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
+### sendFeatureReport()
+
+|   | description                     | buffer length (bytes)                                    |
+|---|---------------------------------|----------------------------------------------------------|
+| 1 | Set color of the 1st pixel      | 3: `R`, `G`, `B`                                         |
+| 2 | ? _(writes some data)_          | 32                                                       |
+| 3 | ? _(writes some data)_          | 32                                                       |
+| 4 | Set mode for BlinkStick Pro     | 1: `mode`                                                |
+| 5 | Set color of 1 arbitrary pixel  | 5: `channel`, `index`, `R`, `G`, `B`                     |
+| 6 | Set colors of 8 pixels at once  | 1 + 8 * 3:  `channel`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
+| 7 | Set colors of 16 pixels at once | 1 + 16 * 3: `channel`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
+| 8 | Set colors of 32 pixels at once | 1 + 32 * 3: `channel`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
+| 9 | Set colors of 64 pixels at once | 1 + 64 * 3: `channel`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
+
+### receiveFeatureReport()
+
+|   | description                       | buffer length (bytes)                                   |
+|---|-----------------------------------|---------------------------------------------------------|
+| 1 | Get color of the 1st pixel        | 4: `1`, `R`, `G`, `B`                                   |
+| 2 | ? _(reads some data back)_        | 34                                                      |
+| 3 | ? _(reads some data back)_        | 34                                                      |
+| 4 | Get mode for BlinkStick Pro       | 2: `4`, `mode`                                          |
+| 5 | Get color of the 1st pixel        | 5: `5`, `0`, `0`, `R`, `G`, `B`                         |
+| 6 | Get colors of the first 8 pixels  | 2 + 8 * 3:  `6`, `0`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
+| 7 | Get colors of the first 16 pixels | 2 + 16 * 3: `7`, `0`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
+| 8 | Get colors of the first 32 pixels | 2 + 32 * 3: `8`, `0`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
+| 9 | Get colors of the first 64 pixels | 2 + 64 * 3: `9`, `0`, `G`, `R`, `B`, `G`, `R`, `B`, ... |
